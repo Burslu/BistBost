@@ -1,0 +1,38 @@
+name: BIST Bot Runner
+
+on:
+  schedule:
+    # Her 5 dakikada çalıştır (pazartesi-cuma, 09:30-18:00 BIST saati)
+    - cron: '*/5 9-17 * * 1-5'
+  workflow_dispatch:  # Manuel tetikleme için
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Code'u indir
+        uses: actions/checkout@v4
+      
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Gerekli kütüphaneleri yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Bot'u çalıştır (tek periyot)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python run_production.py
+        continue-on-error: true
+      
+      - name: İşi tamamla
+        run: echo "✅ BIST Bot periyodu tamamlandı"

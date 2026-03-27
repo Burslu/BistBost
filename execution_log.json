@@ -1,0 +1,31 @@
+{
+  "executed_signals": [
+    {
+      "position_id": 1,
+      "symbol": "THYAO.IS",
+      "type": "AL",
+      "entry_price": 120.5,
+      "entry_quality": 82,
+      "confidence": 75,
+      "momentum": 65,
+      "volatilite": 2.5,
+      "haber_sentiment": 0.3,
+      "haber_text": "Ýyi kazançlar, yatýrýmcý güveni artýyor",
+      "stop_loss": 117.4875,
+      "take_profit": 125.01875000000001,
+      "quantity": 4.15,
+      "timestamp": "2026-03-26T16:49:03.322147"
+    }
+  ],
+  "portfolio": {
+    "starting_portfolio": 5000,
+    "current_portfolio": 5000,
+    "total_pnl": 0,
+    "pnl_percent": 0.0,
+    "open_positions_count": 1,
+    "closed_positions_count": 0,
+    "open_risk_tl": 100.0,
+    "open_risk_percent": 2.0
+  },
+  "timestamp": "2026-03-26T16:49:03.323610"
+}

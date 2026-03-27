@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local env
+.env
+config/settings.json
+
+# Logs
+logs/*.log
+logs/*.json
+
+# Data
+data/raw/
+data/signals/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
