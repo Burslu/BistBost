@@ -872,6 +872,240 @@ class RaporOlusturucu:
 
 
 # ═══════════════════════════════════════════════════════
+# MOCK TRADING ENGINE (Sanal Al-Sat Simülasyonu)
+# ═══════════════════════════════════════════════════════
+
+MOCK_BASLANGIC_BAKIYE = 10_000.0  # 10.000 TL
+MOCK_RISK_ORANI       = 0.02      # İşlem başına %2 risk
+MOCK_MIN_RR           = 1.5       # Minimum Risk/Reward oranı
+MOCK_MAX_POZISYON     = 5         # Aynı anda max açık pozisyon
+MOCK_KOMISYON_ORANI   = 0.002     # %0.2 komisyon (alış+satış)
+
+@dataclass
+class MockIslem:
+    sembol: str
+    yon: str               # "AL"
+    giris_fiyat: float
+    lot: float             # Kaç adet
+    maliyet: float         # Toplam giriş maliyeti (komisyon dahil)
+    stop_loss: float
+    hedef: float
+    rr_orani: float        # Risk/Reward
+    giris_guven: float
+    giris_skor: float
+    giris_zamani: str
+    durum: str = "ACIK"    # ACIK, HEDEF, STOP, SINYAL_CIKIS
+    cikis_fiyat: float = 0.0
+    cikis_zamani: str = ""
+    kar_zarar: float = 0.0
+    kar_zarar_pct: float = 0.0
+
+class MockTrader:
+    """10K TL sanal bakiye ile R/R bazlı al-sat simülasyonu."""
+
+    DOSYA = Path("data/signals/mock_portfolio.json")
+
+    def __init__(self):
+        self.bakiye = MOCK_BASLANGIC_BAKIYE
+        self.acik_islemler: list[MockIslem] = []
+        self.kapali_islemler: list[MockIslem] = []
+        self._yukle()
+
+    def _yukle(self):
+        try:
+            if self.DOSYA.exists():
+                with open(self.DOSYA, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.bakiye = data.get("bakiye", MOCK_BASLANGIC_BAKIYE)
+                for t in data.get("acik_islemler", []):
+                    self.acik_islemler.append(MockIslem(**t))
+                for t in data.get("kapali_islemler", []):
+                    self.kapali_islemler.append(MockIslem(**t))
+        except Exception as e:
+            log.debug(f"Mock portfolio yuklenemedi: {e}")
+
+    def _kaydet(self):
+        self.DOSYA.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "guncelleme": datetime.now().isoformat(),
+            "bakiye": round(self.bakiye, 2),
+            "baslangic_bakiye": MOCK_BASLANGIC_BAKIYE,
+            "toplam_deger": round(self.toplam_deger(), 2),
+            "acik_pozisyon_sayisi": len(self.acik_islemler),
+            "kapali_islem_sayisi": len(self.kapali_islemler),
+            "acik_islemler": [
+                {k: v for k, v in t.__dict__.items()} for t in self.acik_islemler
+            ],
+            "kapali_islemler": [
+                {k: v for k, v in t.__dict__.items()} for t in self.kapali_islemler[-50:]  # Son 50
+            ],
+        }
+        with open(self.DOSYA, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+    def toplam_deger(self) -> float:
+        """Bakiye + açık pozisyonların maliyet değeri."""
+        acik_maliyet = sum(t.maliyet for t in self.acik_islemler)
+        return self.bakiye + acik_maliyet
+
+    def _zaten_acik(self, sembol: str) -> bool:
+        return any(t.sembol == sembol for t in self.acik_islemler)
+
+    def islem_degerlendir(self, sonuclar: list['HisseAnaliz']):
+        """Her turda: 1) Mevcut pozisyonları kontrol et  2) Yeni AL yap."""
+
+        # ─── 1) Açık pozisyonları kontrol et (stop/hedef/sinyal çıkış) ───
+        acik_kalan = []
+        for islem in self.acik_islemler:
+            # Bu sembolün güncel analizini bul
+            guncel = next((s for s in sonuclar if s.sembol == islem.sembol), None)
+            if guncel is None:
+                acik_kalan.append(islem)
+                continue
+
+            fiyat = guncel.fiyat
+            cikis = False
+
+            if fiyat <= islem.stop_loss:
+                # STOP-LOSS tetiklendi
+                islem.durum = "STOP"
+                islem.cikis_fiyat = islem.stop_loss
+                cikis = True
+            elif fiyat >= islem.hedef:
+                # HEDEF fiyat ulaşıldı
+                islem.durum = "HEDEF"
+                islem.cikis_fiyat = islem.hedef
+                cikis = True
+            elif guncel.sinyal in ("GUCLU_SAT", "ZAYIF_SAT"):
+                # SAT sinyali geldi
+                islem.durum = "SINYAL_CIKIS"
+                islem.cikis_fiyat = fiyat
+                cikis = True
+
+            if cikis:
+                satis_tutari = islem.lot * islem.cikis_fiyat
+                komisyon = satis_tutari * MOCK_KOMISYON_ORANI
+                net_satis = satis_tutari - komisyon
+                islem.kar_zarar = round(net_satis - islem.maliyet, 2)
+                islem.kar_zarar_pct = round((islem.kar_zarar / islem.maliyet) * 100, 2)
+                islem.cikis_zamani = datetime.now().strftime("%Y-%m-%d %H:%M")
+                self.bakiye += net_satis
+                self.kapali_islemler.append(islem)
+                log.info(f"💰 MOCK {islem.durum}: {islem.sembol} "
+                         f"giris:{islem.giris_fiyat:.2f} cikis:{islem.cikis_fiyat:.2f} "
+                         f"K/Z:{islem.kar_zarar:+.2f}₺ ({islem.kar_zarar_pct:+.1f}%)")
+            else:
+                acik_kalan.append(islem)
+
+        self.acik_islemler = acik_kalan
+
+        # ─── 2) Yeni AL sinyallerini değerlendir ───
+        if len(self.acik_islemler) >= MOCK_MAX_POZISYON:
+            self._kaydet()
+            return
+
+        # GUCLU_AL sinyallerini skora göre sırala
+        adaylar = [
+            s for s in sonuclar
+            if s.sinyal == "GUCLU_AL"
+            and not self._zaten_acik(s.sembol)
+            and s.atr > 0
+            and s.stop_loss > 0
+            and s.hedef > s.fiyat
+        ]
+        adaylar.sort(key=lambda x: x.skor, reverse=True)
+
+        for s in adaylar:
+            if len(self.acik_islemler) >= MOCK_MAX_POZISYON:
+                break
+
+            # R/R hesabı
+            risk = s.fiyat - s.stop_loss
+            reward = s.hedef - s.fiyat
+            if risk <= 0:
+                continue
+            rr = reward / risk
+
+            if rr < MOCK_MIN_RR:
+                continue  # R/R yetersiz
+
+            # Pozisyon boyutu: bakiyenin %2'si risk
+            risk_tutari = self.bakiye * MOCK_RISK_ORANI
+            lot = risk_tutari / risk
+            maliyet = lot * s.fiyat
+            komisyon = maliyet * MOCK_KOMISYON_ORANI
+            toplam_maliyet = maliyet + komisyon
+
+            # Bakiye kontrolü
+            if toplam_maliyet > self.bakiye * 0.95:
+                continue  # Bakiye yetersiz (%5 marj bırak)
+
+            # AL
+            self.bakiye -= toplam_maliyet
+            islem = MockIslem(
+                sembol=s.sembol,
+                yon="AL",
+                giris_fiyat=s.fiyat,
+                lot=round(lot, 2),
+                maliyet=round(toplam_maliyet, 2),
+                stop_loss=s.stop_loss,
+                hedef=s.hedef,
+                rr_orani=round(rr, 2),
+                giris_guven=s.guven,
+                giris_skor=s.skor,
+                giris_zamani=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+            self.acik_islemler.append(islem)
+            log.info(f"🛒 MOCK AL: {s.sembol} @ {s.fiyat:.2f}₺ "
+                     f"lot:{lot:.1f} maliyet:{toplam_maliyet:.0f}₺ "
+                     f"SL:{s.stop_loss:.2f} TP:{s.hedef:.2f} R/R:{rr:.1f}")
+
+        self._kaydet()
+
+    def rapor(self) -> str:
+        """Mock trading özet raporu."""
+        toplam = self.toplam_deger()
+        kz = toplam - MOCK_BASLANGIC_BAKIYE
+        kz_pct = (kz / MOCK_BASLANGIC_BAKIYE) * 100
+
+        satirlar = [
+            f"\n💼 <b>MOCK PORTFOLIO</b>",
+            f"  Baslangic: {MOCK_BASLANGIC_BAKIYE:,.0f}₺",
+            f"  Bakiye:    {self.bakiye:,.0f}₺",
+            f"  Toplam:    {toplam:,.0f}₺ ({kz:+,.0f}₺ | {kz_pct:+.1f}%)",
+            f"  Acik:      {len(self.acik_islemler)} pozisyon",
+        ]
+
+        if self.acik_islemler:
+            satirlar.append(f"\n  📊 <b>Acik Pozisyonlar:</b>")
+            for t in self.acik_islemler:
+                satirlar.append(
+                    f"    • {t.sembol} @ {t.giris_fiyat:.2f}₺ "
+                    f"SL:{t.stop_loss:.2f} TP:{t.hedef:.2f} R/R:{t.rr_orani}"
+                )
+
+        # Son kapanan işlemler
+        son_kapanan = self.kapali_islemler[-5:]
+        if son_kapanan:
+            kazanc = sum(1 for t in self.kapali_islemler if t.kar_zarar > 0)
+            kayip = sum(1 for t in self.kapali_islemler if t.kar_zarar <= 0)
+            toplam_islem = len(self.kapali_islemler)
+            win_rate = (kazanc / toplam_islem * 100) if toplam_islem > 0 else 0
+
+            satirlar.append(f"\n  📈 <b>Islem Gecmisi:</b> {toplam_islem} islem | "
+                          f"Win:{kazanc} Loss:{kayip} ({win_rate:.0f}%)")
+            for t in reversed(son_kapanan):
+                emoji = "✅" if t.kar_zarar > 0 else "❌"
+                satirlar.append(
+                    f"    {emoji} {t.sembol} {t.durum} "
+                    f"{t.giris_fiyat:.2f}→{t.cikis_fiyat:.2f} "
+                    f"K/Z:{t.kar_zarar:+.0f}₺ ({t.kar_zarar_pct:+.1f}%)"
+                )
+
+        return "\n".join(satirlar)
+
+
+# ═══════════════════════════════════════════════════════
 # POZİSYON TAKİPÇİ (Duplicate Signal Prevention)
 # ═══════════════════════════════════════════════════════
 
@@ -1025,6 +1259,13 @@ class Bist100SignalBot:
         self.sonuclar: list[HisseAnaliz] = []
         self.basarisiz: list[str] = []
         self.pozisyon_takip = PozisyonTakipci()
+        self.mock_trader: Optional[MockTrader] = None
+
+    def mock_aktif_et(self):
+        """Mock trading modunu aktif et."""
+        self.mock_trader = MockTrader()
+        log.info(f"💼 Mock trading aktif | Bakiye: {self.mock_trader.bakiye:,.0f}₺ | "
+                 f"Acik: {len(self.mock_trader.acik_islemler)} pozisyon")
 
     def _load_from_settings(self):
         """settings.json'dan Telegram bilgilerini yükle."""
@@ -1259,17 +1500,28 @@ def main():
     parser.add_argument("--aralik", type=int, default=ANALIZ_ARALIK_DK, help=f"Analiz aralığı dakika (varsayılan: {ANALIZ_ARALIK_DK})")
     parser.add_argument("--rapor-aralik", type=int, default=RAPOR_ARALIK_DK, help=f"Rapor aralığı dakika (varsayılan: {RAPOR_ARALIK_DK})")
     parser.add_argument("--7-24", dest="yedi_yirmi_dort", action="store_true", help="Borsa saatleri dışında da çalış")
+    parser.add_argument("--mock", action="store_true", help="Mock trading aktif (10K TL sanal bakiye)")
     args = parser.parse_args()
 
     bot = Bist100SignalBot()
+
+    if args.mock:
+        bot.mock_aktif_et()
 
     if args.tek:
         # ─── TEK SEFERLİK MOD (eski davranış) ───
         log.info("📌 Tek seferlik mod")
         bot.analiz_hepsini(period="6mo")
+        if bot.mock_trader:
+            bot.mock_trader.islem_degerlendir(bot.sonuclar)
         bot.konsol_ozet()
         bot.sonuclari_kaydet()
         bot.rapor_olustur_ve_gonder(min_guven=50.0, saat_basi_rapor=True)
+        if bot.mock_trader:
+            mock_rapor = bot.mock_trader.rapor()
+            print(mock_rapor)
+            if bot.telegram:
+                bot.telegram.gonder(mock_rapor)
         print("\n✅ Tamamlandi!")
         return
 
@@ -1278,15 +1530,20 @@ def main():
     rapor_aralik = args.rapor_aralik
     log.info(f"🔄 Surekli mod: her {analiz_aralik}dk analiz | her {rapor_aralik}dk rapor")
     log.info(f"📂 Acik pozisyon takibi: {len(bot.pozisyon_takip.pozisyonlar)} mevcut pozisyon")
+    if bot.mock_trader:
+        log.info(f"💼 Mock trading aktif | Bakiye: {bot.mock_trader.bakiye:,.0f}₺")
 
     if bot.telegram:
-        bot.telegram.gonder(
+        baslangic_msg = (
             f"🤖 <b>BistBot v2 Basladi</b>\n"
             f"🔄 Analiz: her {analiz_aralik}dk\n"
             f"📊 Rapor: her {rapor_aralik}dk\n"
             f"📂 Acik pozisyon: {len(bot.pozisyon_takip.pozisyonlar)}\n"
-            f"⏰ {datetime.now():%H:%M:%S}"
         )
+        if bot.mock_trader:
+            baslangic_msg += f"💼 Mock trading: {bot.mock_trader.bakiye:,.0f}₺\n"
+        baslangic_msg += f"⏰ {datetime.now():%H:%M:%S}"
+        bot.telegram.gonder(baslangic_msg)
 
     son_rapor_zamani = None
     tur_sayisi = 0
@@ -1325,7 +1582,18 @@ def main():
             elif (now - son_rapor_zamani).total_seconds() >= rapor_aralik * 60:
                 saat_basi = True
 
+            # Mock trading
+            if bot.mock_trader and bot.sonuclar:
+                bot.mock_trader.islem_degerlendir(bot.sonuclar)
+
             bot.rapor_olustur_ve_gonder(min_guven=50.0, saat_basi_rapor=saat_basi)
+
+            # Mock rapor (saat başı)
+            if saat_basi and bot.mock_trader:
+                mock_rapor = bot.mock_trader.rapor()
+                print(mock_rapor)
+                if bot.telegram:
+                    bot.telegram.gonder(mock_rapor)
 
             if saat_basi:
                 son_rapor_zamani = now
