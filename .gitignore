@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 *.egg-info/
 dist/
@@ -22,8 +23,8 @@ build/
 config/settings.json
 
 # Logs
-logs/*.log
-logs/*.json
+logs/
+*.log
 
 # Data
 data/raw/
@@ -32,6 +33,3 @@ data/signals/
 # OS
 .DS_Store
 Thumbs.db
-
-# Git
-.git/

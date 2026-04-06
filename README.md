@@ -1,131 +1,97 @@
-# 🤖 BIST Real-Time Trading Bot
+# BIST Algorithmic Trading Bot
 
-Algoritmik ticaret asistanı - **Real-time sinyal üretimi, ağırlıklı analiz, saatlik Telegram özeti**
+324 BIST hissesini 12 teknik indikatörle analiz eden, sürekli çalışan sinyal botu.
 
-## 📋 Sistem Özellikleri
+## Özellikler
 
-✅ **11 Teknik İndikatör**: MA, RSI, MACD, ADX, ATR, Bollinger, Stochastic, CCI, Williams %R, Hacim, Haber Sentiment
+- **324 BIST hissesi** (BIST 100 + ek hisseler)
+- **12 ağırlıklı teknik indikatör** (MA, MACD, ADX, Momentum, RSI, Hacim, OBV, Bollinger, Stochastic, CCI, Williams %R, ATR)
+- **Trend bağlam sistemi** — güçlü trendlerde osilatör gürültüsünü bastırır
+- **Pozisyon takibi** — aynı hisseye spam AL sinyali göndermez, güven artarsa tekrar bildirir
+- **Sürekli çalışma modu** — borsa saatlerinde 10dk analiz, 60dk Telegram raporu
+- **Mock trading** — 10.000 TL sanal bakiye ile R/R bazlı al-sat simülasyonu
+- **Telegram entegrasyonu** — HTML raporlar, otomatik mesaj bölme
 
-✅ **Ağırlıklı Skor Sistemi**: Her indikatörün kat sayıları farklı (MA×2.0, RSI×1.5, MACD×1.5, vs.)
-
-✅ **Real-Time Analiz**: 5 dakikalık barlarla sürekli veri güncelleme
-
-✅ **Telegram Entegrasyonu**: Güçlü sinyaller anında + saatlik özet mesajları
-
-✅ **BacktestValidator**: 1 yıllık geçmiş veri - %93 getiri test sonucu!
-
-## 📊 Proje Yapısı
+## Proje Yapısı
 
 ```
 BistBot/
-├── realtime_analyzer.py      (👈 MAIN: 11 indikatör + ağırlıklı skor)
-├── backtest_validator.py     (Geçmiş 1 yıl test - backtest raporu)
-├── run_production.py         (Production bot - 24/7 mode)
-├── test_realtime.py          (Hızlı test - 1 hisse)
-│
+├── bist100_signal_bot.py     # Ana bot (tek dosya, tüm işlevler)
 ├── config/
-│   ├── settings.json         (Konfigürasyon)
-│   └── settings.py           (Loader)
-│
+│   └── settings.json         # Telegram token + chat_id
 ├── data/
-│   ├── raw/                  (OHLCV veri)
-│   └── signals/              (Sinyal CSV + backtest raporu)
-│
-├── logs/                     (Günlük loglar)
-├── requirements.txt          (Bağımlılıklar)
-└── README.md                 (Bu dosya!)
+│   ├── raw/                  # OHLCV önbellek
+│   └── signals/              # Pozisyon takibi + mock trade log
+├── logs/                     # Çalışma logları
+├── requirements.txt
+├── Procfile
+└── .github/workflows/        # GitHub Actions (opsiyonel)
 ```
 
-## 🚀 Başlangıç (3 adım)
+## Kurulum
 
-### 1️⃣ Kurulum
 ```powershell
 cd C:\Users\pc\OneDrive\Desktop\BistBot
 pip install -r requirements.txt
 ```
 
-### 2️⃣ Telegram Setup (OPTIONAL)
-- @BotFather ile bot oluştur, token al
-- @userinfobot ile chat_id al
-- config/settings.json'u güncelle
+Telegram için `config/settings.json`:
+```json
+{
+  "telegram": {
+    "bot_token": "BOT_TOKEN",
+    "chat_id": "CHAT_ID"
+  }
+}
+```
 
-### 3️⃣ Çalıştır
+## Kullanım
+
 ```powershell
-# Test (1 hisse)
-py test_realtime.py
+# Sürekli mod (varsayılan: 10dk analiz, 60dk rapor, borsa saatleri)
+py bist100_signal_bot.py
 
-# Backtest (1 yıl - görün sistem ne kadar başarılı)
-py backtest_validator.py
+# Tek seferlik analiz
+py bist100_signal_bot.py --tek
 
-# Production (5 dakikada bir, saatlik Telegram özeti)
-py run_production.py
+# Özel aralıklar
+py bist100_signal_bot.py --aralik 5 --rapor-aralik 30
+
+# 7/24 çalış (borsa dışı saatlerde de)
+py bist100_signal_bot.py --7-24
+
+# Mock trading ile (10K TL sanal bakiye)
+py bist100_signal_bot.py --mock
 ```
 
-## 📈 İndikatör Ağırlıkları
+## İndikatör Ağırlıkları (v2)
+
+| İndikatör | Ağırlık | Rol |
+|-----------|---------|-----|
+| MA Sistemi | 2.5 | Trend yönü |
+| MACD | 1.8 | Momentum confirm |
+| ADX | 1.5 | Trend gücü |
+| Momentum | 1.5 | Fiyat ivmesi |
+| RSI | 1.2 | Aşırı alım/satım |
+| Hacim | 1.2 | Volume confirm |
+| OBV | 1.0 | Akıllı para |
+| Bollinger | 0.8 | Band yürüyüşü |
+| Stochastic | 0.7 | Osilatör |
+| CCI | 0.5 | Döngüsel |
+| Williams %R | 0.5 | Momentum 2 |
+| ATR | 0.0 | Bilgi amaçlı |
+
+## Sinyal Seviyeleri
 
 ```
-MA Sistemi:      ×2.0  (Trend yönü en kritik)
-RSI:             ×1.5  (Momentum)
-MACD:            ×1.5  (Momentum confirmation)
-ADX:             ×1.3  (Trend gücü)
-ATR:             ×1.2  (Volatilite ölçüsü)
-Bollinger:       ×1.0  (Aşırı hareket)
-Stochastic:      ×1.0  (Oscillator)
-Williams %R:     ×1.0  (Momentum 2)
-CCI:             ×0.9  (Cyclic indicator)
-Hacim:           ×0.8  (Volume confirmation)
-Haber Sentiment: ×1.5  (KAP + NLP - henüz placeholder)
+≥ +0.30  →  GUCLU_AL
+≥ +0.10  →  ZAYIF_AL
+> -0.10  →  NOTR
+> -0.30  →  ZAYIF_SAT
+≤ -0.30  →  GUCLU_SAT
 ```
 
-## 🎯 Sinyal Seviyeleri
+## Yasal Uyarı
 
-```
-+0.50 ve üstü    → 🟢 GÜÇLÜ AL      (Strong Buy)
-+0.20 ~ +0.50    → 📗 ZAYIF AL      (Weak Buy)
--0.20 ~ +0.20    → ⚪ NÖTR           (Neutral)
--0.50 ~ -0.20    → 📕 ZAYIF SAT     (Weak Sell)
--0.50 ve altı    → 🔴 GÜÇLÜ SAT     (Strong Sell)
-```
-
-## ✅ Backtest Sonuçları (1 Yıl)
-
-| Sembol | Getiri | Win Rate | İşlem | Status |
-|--------|--------|----------|-------|--------|
-| ASELS.IS | **+93.74%** | 100% | 5 | 🚀 |
-| SISE.IS | +21.07% | 60% | 9 | ✓ |
-| AKBNK.IS | +20.95% | 50% | 8 | ✓ |
-| YKBNK.IS | +18.45% | 50% | 8 | ✓ |
-| Ortalama | **~10-12%** | ~50% | - | ✓ Pozitif |
-
-## ⚠️ Risk Management
-
-```
-Stop-Loss = Giriş - 1.5×ATR
-Take-Profit = Giriş + 2.0×ATR
-Risk:Reward = 1:1.33 (favorable)
-```
-
-## 🛠️ Gelecek Geliştirmeler
-
-- [ ] KAP haber NLP integre et
-- [ ] Makro göstergeler ekle (USD/TRY, altın, petrol)
-- [ ] Backtester parameter optimizasyonu
-- [ ] Web Dashboard
-- [ ] Docker deployment
-
-## ⚠️ Yasal Uyarı
-
-**Bu bot EĞİTİM amaçlıdır!** Yatırım TAVSİYESİ DEĞİLDİR. Piyasa riski yüksektir, kaybetmeyi göze alanlar kullanmalı.
-
-Bu durumda mesaj sadece terminale yazdirilir. Gercek gonderim icin:
-
-- telegram.enabled = true
-- telegram.dry_run = false
-- telegram.bot_token ve telegram.chat_id alanlarini doldur
-
-## Sonraki Fazlar
-
-- Haber/KAP NLP skoru ekleme
-- Makro/global skorun karar modeline entegrasyonu
-- Backtest ve walk-forward test
+Bu bot eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 - Telegram komutlari ve portfoy takibi
