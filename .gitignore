@@ -29,6 +29,10 @@ logs/
 # Data
 data/raw/
 data/signals/
+data/charts/
+
+# Runtime
+bot.lock
 
 # OS
 .DS_Store

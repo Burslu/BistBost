@@ -84,11 +84,11 @@ py bist100_signal_bot.py --mock
 ## Sinyal Seviyeleri
 
 ```
-≥ +0.30  →  GUCLU_AL
+≥ +0.40  →  GUCLU_AL
 ≥ +0.10  →  ZAYIF_AL
 > -0.10  →  NOTR
-> -0.30  →  ZAYIF_SAT
-≤ -0.30  →  GUCLU_SAT
+> -0.40  →  ZAYIF_SAT
+≤ -0.40  →  GUCLU_SAT
 ```
 
 ## Yasal Uyarı
